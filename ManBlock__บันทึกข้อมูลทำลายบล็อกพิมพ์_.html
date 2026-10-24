@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full bg-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ManBlock - บันทึกข้อมูลทำลายบล็อกพิมพ์</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & Noto Sans Thai -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Noto Sans Thai', 'Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#1d4ed8',
+                            600: '#1e40af',
+                            700: '#1e3a8a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Noto Sans Thai', 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="h-full bg-slate-100 text-slate-800 antialiased pb-12">
+
+    <!-- Header Navigation -->
+    <header class="bg-slate-900 text-white sticky top-0 z-30 shadow-md">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-red-600 p-2 rounded-lg flex items-center justify-center text-white shadow">
+                    <i class="fa-solid fa-boxes-packing text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold leading-tight">ManBlock</h1>
+                    <p class="text-xs text-slate-400">บันทึกข้อมูลทำลายบล็อกพิมพ์</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="apiKeyBtn" onclick="toggleApiKeyModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 text-xs font-medium rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-key"></i>
+                    <span id="apiKeyStatusText">ตั้งค่า API Key</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Notification Toast Container -->
+    <div id="toastContainer" class="fixed top-16 right-4 z-50 flex flex-col space-y-2 pointer-events-none max-w-sm w-full px-4"></div>
+
+    <!-- Main Content Container -->
+    <main class="max-w-4xl mx-auto px-4 pt-4 space-y-6">
+
+        <!-- Image Upload & Batch Scanner Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-6 transition-all">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-camera text-blue-600"></i>
+                    รูปภาพป้ายทะเบียน (สแกนเดี่ยว / หลายรูป)
+                </h2>
+                <span id="imageCountBadge" class="hidden text-xs bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full font-medium">
+                    เลือก 0 รูป
+                </span>
+            </div>
+
+            <!-- Drag Drop Area -->
+            <div id="dropZone" onclick="document.getElementById('imageInput').click()" class="border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50/50 hover:bg-blue-50/30 transition-all rounded-xl p-6 text-center cursor-pointer relative group">
+                <input type="file" id="imageInput" accept="image/*" multiple class="hidden" onchange="handleImageSelect(event)">
+                
+                <div id="uploadPlaceholder" class="space-y-3 py-4">
+                    <div class="w-14 h-14 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
+                        <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm font-semibold text-slate-700">แตะเพื่อเลือกรูป หรือ ถ่ายภาพป้ายทะเบียน</p>
+                        <p class="text-xs text-slate-400 mt-1">รองรับทั้งรูปเดียว หรือเลือกหลายรูปพร้อมกัน</p>
+                    </div>
+                </div>
+
+                <!-- Image Preview Grid -->
+                <div id="previewContainer" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-3 text-left"></div>
+            </div>
+
+            <!-- Scan Button & Progress -->
+            <div class="mt-4 space-y-3">
+                <button id="scanBtn" onclick="processImages()" disabled class="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-md transition flex items-center justify-center gap-2 text-sm sm:text-base">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span id="scanBtnText">สแกนดึงข้อมูลด้วย AI</span>
+                </button>
+
+                <!-- Progress Bar -->
+                <div id="progressBox" class="hidden space-y-1.5 pt-2">
+                    <div class="flex justify-between text-xs font-medium text-slate-600">
+                        <span id="progressStatus">กำลังประมวลผล...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div id="progressBar" class="bg-blue-600 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Form Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-6">
+            <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-blue-600"></i>
+                    ข้อมูลที่ดึงได้จากป้าย / ฟอร์มบันทึก
+                </h2>
+                <button onclick="clearForm()" class="text-xs text-slate-400 hover:text-red-500 transition flex items-center gap-1">
+                    <i class="fa-solid fa-rotate-left"></i> ล้างฟอร์ม
+                </button>
+            </div>
+
+            <form id="recordForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- 1. ที่เก็บ -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            <i class="fa-solid fa-warehouse text-emerald-600 mr-1"></i>1. ที่เก็บ
+                        </label>
+                        <input type="text" id="storageLocation" placeholder="เช่น H000 (B-00) หรือ N000" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                    </div>
+
+                    <!-- 2. รหัสเครื่องมือ -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            <i class="fa-solid fa-wrench text-rose-500 mr-1"></i>2. รหัสเครื่องมือ
+                        </label>
+                        <input type="text" id="toolCode" placeholder="เช่น PP00000 (เว้นว่างหากเป็นป้ายควบคุม)" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                    </div>
+
+                    <!-- 3. รหัสกล่อง -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            <i class="fa-solid fa-box text-blue-500 mr-1"></i>3. รหัสกล่อง
+                        </label>
+                        <input type="text" id="boxCode" placeholder="เช่น 0000-0000-0" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                    </div>
+
+                    <!-- 4. พิมพ์สี -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            <i class="fa-solid fa-palette text-amber-500 mr-1"></i>4. พิมพ์สี
+                        </label>
+                        <input type="text" id="printColor" placeholder="เช่น 00-000-P" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                    </div>
+
+                    <!-- 5. วันที่ -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            <i class="fa-solid fa-calendar-days text-indigo-500 mr-1"></i>5. วันที่
+                        </label>
+                        <input type="text" id="recordDate" placeholder="เช่น 00/00/0000" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                    </div>
+
+                    <!-- 6. MPV -->
+                    <div>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            <i class="fa-solid fa-layer-group text-purple-500 mr-1"></i>6. MPV
+                        </label>
+                        <input type="text" id="mpv" placeholder="เช่น 0.0" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none transition">
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow transition flex items-center justify-center gap-2 text-sm">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>บันทึกข้อมูลเข้าตาราง</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Table Data Card -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-4 sm:p-6 overflow-hidden">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div>
+                    <h2 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-table text-blue-600"></i>
+                        รายการที่บันทึกแล้ว
+                    </h2>
+                    <p class="text-xs text-slate-400">รายการทั้งหมด <span id="recordCount" class="font-bold text-blue-600">0</span> รายการ</p>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <button onclick="exportToExcel()" class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-file-excel text-emerald-600"></i>
+                        ดาวน์โหลด Excel (.xlsx)
+                    </button>
+                    <button onclick="clearAllRecords()" class="px-3 py-2 bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 border border-slate-200 text-xs font-medium rounded-lg transition">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Table Responsive -->
+            <div class="overflow-x-auto -mx-4 sm:mx-0">
+                <table class="w-full text-xs text-left text-slate-600">
+                    <thead class="text-xs uppercase bg-slate-100 text-slate-700 font-bold border-y border-slate-200">
+                        <tr>
+                            <th class="py-3 px-3">#</th>
+                            <th class="py-3 px-3">ที่เก็บ</th>
+                            <th class="py-3 px-3">รหัสเครื่องมือ</th>
+                            <th class="py-3 px-3">รหัสกล่อง</th>
+                            <th class="py-3 px-3">พิมพ์สี</th>
+                            <th class="py-3 px-3">วันที่</th>
+                            <th class="py-3 px-3">MPV</th>
+                            <th class="py-3 px-3 text-center">จัดการ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-100">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="emptyState" class="py-12 text-center">
+                <i class="fa-regular fa-folder-open text-4xl text-slate-300 mb-2"></i>
+                <p class="text-sm font-medium text-slate-500">ยังไม่มีข้อมูลในตาราง</p>
+                <p class="text-xs text-slate-400 mt-0.5">ถ่ายภาพป้ายเพื่อสแกน หรือกรอกข้อมูลด้วยตนเองด้านบน</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- API Key Modal -->
+    <div id="apiKeyModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b pb-3">
+                <h3 class="font-bold text-slate-800 flex items-center gap-2">
+                    <i class="fa-solid fa-key text-amber-500"></i>
+                    ตั้งค่า Google Gemini API Key
+                </h3>
+                <button onclick="toggleApiKeyModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <p class="text-xs text-slate-500 leading-relaxed">
+                ระบบใช้ Gemini API ในการอ่านรูปภาพป้ายทะเบียน กรุณาระบุ API Key ของคุณเพื่อเริ่มใช้งาน (ระบบจะบันทึกจำไว้ในเครื่องให้อัตโนมัติ)
+            </p>
+
+            <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">Gemini API Key</label>
+                <input type="password" id="apiKeyInput" placeholder="AIzaSy..." class="w-full px-3.5 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="toggleApiKeyModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg">ยกเลิก</button>
+                <button onclick="saveApiKey()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg shadow">บันทึก Key</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // Global State
+        let selectedFiles = [];
+        let records = JSON.parse(localStorage.getItem('manblock_records') || '[]');
+        let userApiKey = localStorage.getItem('gemini_api_key') || '';
+
+        // Init App
+        window.addEventListener('DOMContentLoaded', () => {
+            updateApiKeyUI();
+            renderTable();
+        });
+
+        // Toggle API Key Modal
+        function toggleApiKeyModal() {
+            const modal = document.getElementById('apiKeyModal');
+            modal.classList.toggle('hidden');
+            if(!modal.classList.contains('hidden')) {
+                document.getElementById('apiKeyInput').value = userApiKey;
+            }
+        }
+
+        // Save API Key
+        function saveApiKey() {
+            const key = document.getElementById('apiKeyInput').value.trim();
+            userApiKey = key;
+            localStorage.setItem('gemini_api_key', key);
+            updateApiKeyUI();
+            toggleApiKeyModal();
+            showToast('บันทึก API Key เรียบร้อยแล้ว', 'success');
+        }
+
+        function updateApiKeyUI() {
+            const statusText = document.getElementById('apiKeyStatusText');
+            if (userApiKey) {
+                statusText.textContent = 'ตั้งค่า API Key แล้ว';
+                statusText.classList.remove('text-amber-400');
+                statusText.classList.add('text-emerald-400');
+            } else {
+                statusText.textContent = 'ตั้งค่า API Key';
+                statusText.classList.remove('text-emerald-400');
+                statusText.classList.add('text-amber-400');
+            }
+        }
+
+        // Handle Image Select
+        function handleImageSelect(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) return;
+
+            selectedFiles = files;
+            updatePreviewGrid();
+        }
+
+        // Update Image Preview Grid
+        function updatePreviewGrid() {
+            const container = document.getElementById('previewContainer');
+            const placeholder = document.getElementById('uploadPlaceholder');
+            const countBadge = document.getElementById('imageCountBadge');
+            const scanBtn = document.getElementById('scanBtn');
+            const scanBtnText = document.getElementById('scanBtnText');
+
+            if (selectedFiles.length > 0) {
+                placeholder.classList.add('hidden');
+                container.classList.remove('hidden');
+                countBadge.classList.remove('hidden');
+                countBadge.textContent = `เลือก ${selectedFiles.length} รูป`;
+                
+                scanBtn.disabled = false;
+                scanBtnText.textContent = selectedFiles.length > 1 
+                    ? `สแกนและบันทึก ${selectedFiles.length} รูปภาพพร้อมกัน` 
+                    : 'สแกนดึงข้อมูลด้วย AI';
+
+                container.innerHTML = '';
+                selectedFiles.forEach((file, index) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const div = document.createElement('div');
+                        div.className = 'relative group aspect-square rounded-lg overflow-hidden border border-slate-200 bg-slate-900';
+                        div.innerHTML = `
+                            <img src="${e.target.result}" class="w-full h-full object-cover group-hover:opacity-80 transition">
+                            <button type="button" onclick="removeImage(${index}, event)" class="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs shadow hover:bg-red-700">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        `;
+                        container.appendChild(div);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            } else {
+                placeholder.classList.remove('hidden');
+                container.classList.add('hidden');
+                countBadge.classList.add('hidden');
+                scanBtn.disabled = true;
+                scanBtnText.textContent = 'สแกนดึงข้อมูลด้วย AI';
+                container.innerHTML = '';
+            }
+        }
+
+        function removeImage(index, event) {
+            event.stopPropagation();
+            selectedFiles.splice(index, 1);
+            updatePreviewGrid();
+        }
+
+        // Process Batch Images with Gemini AI
+        async function processImages() {
+            if (selectedFiles.length === 0) return;
+
+            const progressBox = document.getElementById('progressBox');
+            const progressBar = document.getElementById('progressBar');
+            const progressPercent = document.getElementById('progressPercent');
+            const progressStatus = document.getElementById('progressStatus');
+            const scanBtn = document.getElementById('scanBtn');
+
+            progressBox.classList.remove('hidden');
+            scanBtn.disabled = true;
+
+            let successCount = 0;
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                const percent = Math.round(((i) / selectedFiles.length) * 100);
+                
+                progressBar.style.width = `${percent}%`;
+                progressPercent.textContent = `${percent}%`;
+                progressStatus.textContent = `กำลังสแกนรูปที่ ${i + 1}/${selectedFiles.length}...`;
+
+                try {
+                    const base64Data = await fileToBase64(file);
+                    const parsedData = await scanWithGeminiAI(base64Data);
+
+                    if (selectedFiles.length === 1) {
+                        // Single File -> Populate Form directly
+                        populateForm(parsedData);
+                        showToast('สแกนดึงข้อมูลสำเร็จ!', 'success');
+                    } else {
+                        // Multi Files -> Push directly to records table
+                        records.unshift({
+                            id: Date.now() + Math.random(),
+                            storageLocation: parsedData.storageLocation || '',
+                            toolCode: parsedData.toolCode || '',
+                            boxCode: parsedData.boxCode || '',
+                            printColor: parsedData.printColor || '',
+                            recordDate: parsedData.recordDate || '',
+                            mpv: parsedData.mpv || ''
+                        });
+                        saveRecordsToStorage();
+                        renderTable();
+                        successCount++;
+                    }
+                } catch (error) {
+                    console.error("Scan Error:", error);
+                    showToast(`รูปที่ ${i + 1} เกิดข้อผิดพลาด: ${error.message}`, 'error');
+                }
+            }
+
+            // Finish Progress
+            progressBar.style.width = '100%';
+            progressPercent.textContent = '100%';
+            progressStatus.textContent = 'เสร็จสิ้นการประมวลผล!';
+
+            setTimeout(() => {
+                progressBox.classList.add('hidden');
+                scanBtn.disabled = false;
+                if (selectedFiles.length > 1) {
+                    showToast(`สแกนและนำเข้าตารางสำเร็จ ${successCount} รายการ`, 'success');
+                    selectedFiles = [];
+                    updatePreviewGrid();
+                }
+            }, 800);
+        }
+
+        // Gemini AI Direct Scan Call
+        async function scanWithGeminiAI(base64Image) {
+            const apiKey = userApiKey || '';
+            
+            // Endpoint with direct fallback
+            const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash'];
+            const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
+
+            const promptText = `คุณคือผู้เชี่ยวชาญด้านการอ่านป้ายทะเบียนบล็อกพิมพ์ (OCR) 
+กรุณาวิเคราะห์รูปภาพป้ายทะเบียนนี้ และดึงข้อมูลตามกฎต่อไปนี้ส่งกลับมาในรูปแบบ JSON สั้นๆ เท่านั้น:
+
+มีป้ายทะเบียน 2 รูปแบบที่ต้องตรวจสอบ:
+
+[รูปแบบที่ 1 - ป้ายปกติส้ม/แดง]:
+- storageLocation: ข้อความจากช่อง "ที่เก็บ" (เช่น H052, B-02)
+- toolCode: ข้อความจากช่อง "รหัสเครื่องมือ" (เช่น PP11474)
+- boxCode: ข้อความจากช่อง "รหัสกล่อง" (เช่น 0053-0375-1)
+- printColor: ข้อความจากช่อง "พิมพ์สี" (เช่น 04-001-P)
+- recordDate: ข้อความจากช่อง "วันที่" (เช่น 21/10/2026)
+- mpv: ตัวเลขจากช่อง "MPV:" (เช่น 16.0, 23.0)
+
+[รูปแบบที่ 2 - ป้ายที่มีแผ่น "ทะเบียนควบคุมเวอร์ชั่นบล็อก"]:
+- storageLocation: ดึงจากข้อความช่อง "เบอร์บล็อคหลัก" (เช่น N016)
+- toolCode: ให้ใส่เป็นค่าว่าง "" (ไม่ต้องใส่รหัสเครื่องมือ)
+- boxCode: ข้อความจากช่อง "รหัสกล่อง" หรือ "เลขที่ MasterCard" (เช่น 0099-1887-1)
+- printColor: ข้อความจากช่อง "พิมพ์สี" (เช่น 07-001-P)
+- recordDate: ข้อความจากช่อง "วันที่" (เช่น 08/01/63 หรือ 24/12/62)
+- mpv: ดึงจากข้อความช่อง "เวอร์ชั่น Master Print" (เช่น 1.0)
+
+รูปแบบการส่งกลับ (ต้องเป็น JSON strictly):
+{
+  "storageLocation": "",
+  "toolCode": "",
+  "boxCode": "",
+  "printColor": "",
+  "recordDate": "",
+  "mpv": ""
+}`;
+
+            let lastError = null;
+
+            for (const model of models) {
+                try {
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [
+                                    { text: promptText },
+                                    { inline_data: { mime_type: "image/jpeg", data: cleanBase64 } }
+                                ]
+                            }]
+                        })
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.error?.message || `HTTP Error ${response.status}`);
+                    }
+
+                    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+                    
+                    if (jsonMatch) {
+                        return JSON.parse(jsonMatch[0]);
+                    } else {
+                        throw new Error("ไม่สามารถแปลงข้อมูลที่ได้เป็น JSON");
+                    }
+
+                } catch (err) {
+                    console.warn(`Model ${model} failed, trying fallback...`, err);
+                    lastError = err;
+                }
+            }
+
+            throw lastError || new Error("การสแกนล้มเหลว กรุณาตรวจสอบ API Key หรือรูปภาพ");
+        }
+
+        // Helper: Convert File to Base64
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // Populate Form
+        function populateForm(data) {
+            document.getElementById('storageLocation').value = data.storageLocation || '';
+            document.getElementById('toolCode').value = data.toolCode || '';
+            document.getElementById('boxCode').value = data.boxCode || '';
+            document.getElementById('printColor').value = data.printColor || '';
+            document.getElementById('recordDate').value = data.recordDate || '';
+            document.getElementById('mpv').value = data.mpv || '';
+        }
+
+        // Form Submit Handler
+        function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const newRecord = {
+                id: Date.now(),
+                storageLocation: document.getElementById('storageLocation').value.trim(),
+                toolCode: document.getElementById('toolCode').value.trim(),
+                boxCode: document.getElementById('boxCode').value.trim(),
+                printColor: document.getElementById('printColor').value.trim(),
+                recordDate: document.getElementById('recordDate').value.trim(),
+                mpv: document.getElementById('mpv').value.trim()
+            };
+
+            records.unshift(newRecord);
+            saveRecordsToStorage();
+            renderTable();
+            clearForm();
+            showToast('เพิ่มรายการเรียบร้อยแล้ว', 'success');
+        }
+
+        // Clear Form
+        function clearForm() {
+            document.getElementById('recordForm').reset();
+        }
+
+        // Render Data Table
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            const emptyState = document.getElementById('emptyState');
+            const recordCount = document.getElementById('recordCount');
+
+            recordCount.textContent = records.length;
+
+            if (records.length === 0) {
+                tbody.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            tbody.innerHTML = records.map((item, index) => `
+                <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+                    <td class="py-3 px-3 font-semibold text-slate-400">${records.length - index}</td>
+                    <td class="py-3 px-3 font-bold text-slate-800">${escapeHtml(item.storageLocation || '-')}</td>
+                    <td class="py-3 px-3 font-mono text-rose-600">${escapeHtml(item.toolCode || '-')}</td>
+                    <td class="py-3 px-3 font-mono text-blue-600">${escapeHtml(item.boxCode || '-')}</td>
+                    <td class="py-3 px-3">${escapeHtml(item.printColor || '-')}</td>
+                    <td class="py-3 px-3">${escapeHtml(item.recordDate || '-')}</td>
+                    <td class="py-3 px-3 font-bold text-purple-600">${escapeHtml(item.mpv || '-')}</td>
+                    <td class="py-3 px-3 text-center">
+                        <button onclick="deleteRecord(${item.id})" class="p-1.5 text-slate-400 hover:text-red-600 rounded transition">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Delete Single Record
+        function deleteRecord(id) {
+            records = records.filter(r => r.id !== id);
+            saveRecordsToStorage();
+            renderTable();
+            showToast('ลบรายการเรียบร้อย', 'info');
+        }
+
+        // Clear All Records
+        function clearAllRecords() {
+            if (records.length === 0) return;
+            if (confirm('คุณต้องการล้างรายการทั้งหมดในตารางใช่หรือไม่?')) {
+                records = [];
+                saveRecordsToStorage();
+                renderTable();
+                showToast('ล้างตารางเรียบร้อยแล้ว', 'info');
+            }
+        }
+
+        // Export Table to Excel
+        function exportToExcel() {
+            if (records.length === 0) {
+                showToast('ไม่มีข้อมูลในตารางสำหรับ Export', 'warning');
+                return;
+            }
+
+            const excelData = records.map((item, idx) => ({
+                'ลำดับ': idx + 1,
+                '1. ที่เก็บ': item.storageLocation,
+                '2. รหัสเครื่องมือ': item.toolCode,
+                '3. รหัสกล่อง': item.boxCode,
+                '4. พิมพ์สี': item.printColor,
+                '5. วันที่': item.recordDate,
+                '6. MPV': item.mpv
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "ข้อมูลทำลายบล็อกพิมพ์");
+
+            XLSX.writeFile(workbook, `ManBlock_Data_${new Date().toISOString().slice(0,10)}.xlsx`);
+            showToast('ดาวน์โหลดไฟล์ Excel เรียบร้อยแล้ว', 'success');
+        }
+
+        // Save Records to LocalStorage
+        function saveRecordsToStorage() {
+            localStorage.setItem('manblock_records', JSON.stringify(records));
+        }
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            
+            const bgColors = {
+                success: 'bg-emerald-600 text-white',
+                error: 'bg-rose-600 text-white',
+                warning: 'bg-amber-500 text-white',
+                info: 'bg-slate-800 text-white'
+            };
+
+            const icons = {
+                success: 'fa-circle-check',
+                error: 'fa-circle-exclamation',
+                warning: 'fa-triangle-exclamation',
+                info: 'fa-circle-info'
+            };
+
+            toast.className = `pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-xs font-medium ${bgColors[type]} transition-all transform duration-300 translate-y-2 opacity-0`;
+            toast.innerHTML = `
+                <i class="fa-solid ${icons[type]} text-sm"></i>
+                <span>${escapeHtml(message)}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
